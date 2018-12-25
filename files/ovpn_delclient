@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# Shell script to revoke credetials for a OpenVPN user with EasyRSA.
+#
+# Copyright 2016-2018, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This program is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+set -e
+
+BASENAME=$(basename "${0}")
+
+# Variables
+OPENVPN_USERNAME=
+
+__EASYRSA_DIR__="/opt/easyrsa"
+__EASYRSA_DATA__="/data/easyrsa"
+__OPENVPN_DATA__="/data/openvpn"
+
+# Configuration files
+EASYRSA_VARS="${__EASYRSA_DIR__}/vars"
+
+# Usage
+function show_usage() {
+  echo "Usage: ${BASENAME} [options]"
+  echo "  options:"
+  echo "    -u <USERNAME>  The username of the OpenVPN client."
+}
+
+# Options parsing
+while getopts ":u:" opt; do
+  case $opt in
+    u)
+      OPENVPN_USERNAME=${OPTARG}
+      ;;
+    \?)
+      echo >&2 "  [ERROR] Invalid option: -${OPTARG}"
+      exit 1
+      ;;
+    :)
+      echo >&2 "  [ERROR] Option -${OPTARG} requires an argument"
+      exit 2
+      ;;
+  esac
+done
+
+# Check arguments
+if [[ $# -eq 0 ]]; then
+  show_usage
+  exit 3
+fi
+
+# Check requirements
+if [[ "x${OPENVPN_USERNAME}" = "x" ]]; then
+  echo >&2 "  [ERROR] The username (-u) option is mandatory."
+  exit 4
+fi
+
+# Check if client credentials exist
+if [[ ! -f "${__EASYRSA_DATA__}/pki/private/${OPENVPN_USERNAME}.key" ]]; then
+  echo >&2 "  [ERROR] Unable to find client ${OPENVPN_USERNAME} information."
+  exit 5
+fi
+
+# Revoke the client certificate
+easyrsa --vars=${EASYRSA_VARS} --batch revoke "${OPENVPN_USERNAME}"
+
+# Create an updated CRL
+easyrsa --vars=${EASYRSA_VARS} gen-crl "${OPENVPN_USERNAME}"
+
+# Copy required files to OpenVPN
+cp ${__EASYRSA_DATA__}/pki/crl.pem ${__OPENVPN_DATA__}/
+
+# All done
+echo "  [INFO] Credentials successfully revoked"
+exit 0

@@ -1,0 +1,340 @@
+#!/bin/bash
+#
+# Shell script to start the OpenVPN Docker image.
+#
+# Copyright 2016-2018, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This program is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+set -e
+
+BASENAME=$(basename "${0}")
+__TS__=$(date +%Y%m%d%H%M%S)
+
+
+# Variables
+ACTION_HELP=0
+ACTION_INIT=0
+ACTION_START=0
+
+CERTIFICATE_CN=
+OVPN_CLIENT_TO_CLIENT=0
+OVPN_DEFROUTE=1
+OVPN_DNS=1
+OVPN_NS=()
+OVPN_PUSH=()
+OVPN_ROUTES=()
+OVPN_SERVER_ADDR=
+OVPN_SERVER_CN=
+OVPN_SERVER_PORT=
+OVPN_SERVER_PROTO=
+OVPN_SERVER_CIDR="172.16.61.0/24"
+
+__EASYRSA_DIR__="/opt/easyrsa"
+__EASYRSA_DATA__="/data/easyrsa"
+__OPENVPN_DATA__="/data/openvpn"
+
+__TMP_NS__=()
+__TMP_PUSH__=()
+__TMP_ROUTES__=()
+
+
+# Configuration files
+EASYRSA_VARS="${__EASYRSA_DIR__}/vars"
+OPENVPN_CONF="${__OPENVPN_DATA__}/server.conf"
+OPENVPN_ENV="${__OPENVPN_DATA__}/env"
+OPENVPN_STATUS="${__OPENVPN_DATA__}/openvpn.status"
+
+
+# Usage
+function show_usage() {
+  echo "Usage: ${BASENAME} [options] (help|init|start)"
+  echo "  help:"
+  echo "    <none>"
+  echo "  init:"
+  echo "    -c <CN>        The Common Name to use for the CA certificate."
+  echo "    -C             Enables the client-to-client option."
+  echo "    -d             Disables the built in external DNS."
+  echo "    -g             Disables the NAT routing and Default Gateway."
+  echo "    -n <ADDRESS>   Sets a Name Server to be pushed to the clients."
+  echo "    -p <RULE>      Sets a rule to be pushed to the clients."
+  echo "    -r <ROUTE>     Sets a route to be added on the client side (e.g.: "
+  echo "                   '10.0.0.0/16')."
+  echo "    -s <CIDR>      The OpenVPN service subnet (e.g.: '172.16.0.0/12')."
+  echo "    -u <ADDRESS>   The OpenVPN server public DNS name. Should be in the form"
+  echo "                   of (udp|tcp)://<server_dns_name>:<server_port> ."
+  echo "  start:"
+  echo "    <none>"
+}
+
+
+# Convert CIDR to Netmask
+cidr_to_mask() {
+  set -- $(( 5 - ($1 / 8) )) 255 255 255 255 $(( (255 << (8 - ($1 % 8))) & 255 )) 0 0 0
+  [[ "${1}" -gt 1 ]] && shift "${1}" || shift
+  echo "${1-0}.${2-0}.${3-0}.${4-0}"
+}
+
+
+# Get route in 'address netmask' notation
+get_route() {
+  echo "${1%/*} $(cidr_to_mask "${1#*/}")"
+}
+
+
+# Import env
+if [[ -f ${OPENVPN_ENV} ]]; then
+  . ${OPENVPN_ENV}
+fi
+
+
+# Options parsing
+while getopts ":c:Cdgn:Np:r:s:u:" opt; do
+  case ${opt} in
+    c)
+      CERTIFICATE_CN=${OPTARG}
+      ;;
+    C)
+      OVPN_CLIENT_TO_CLIENT=1
+      ;;
+    d)
+      OVPN_DNS=0
+      ;;
+    g)
+      OVPN_DEFROUTE=0
+      ;;
+    n)
+      __TMP_NS__+=("${OPTARG}")
+      ;;
+    p)
+      __TMP_PUSH__+=("${OPTARG}")
+      ;;
+    r)
+      __TMP_ROUTES__+=("${OPTARG}")
+      ;;
+    s)
+      OVPN_SERVER_CIDR=${OPTARG}
+      ;;
+    u)
+      OVPN_SERVER_ADDR=${OPTARG}
+      ;;
+    \?)
+      echo >&2 "  [ERROR] Invalid option: -${OPTARG}"
+      exit 1
+      ;;
+    :)
+      echo >&2 "  [ERROR] Option -${OPTARG} requires an argument"
+      exit 2
+      ;;
+  esac
+done
+
+shift $((OPTIND-1))
+
+for command in "${@}"; do
+  case "${command,,}" in
+    help)
+      ACTION_HELP=1
+      ;;
+    init)
+      ACTION_INIT=1
+      ;;
+    start)
+      ACTION_START=1
+      ;;
+    *)
+      echo >&2 "  [WARN] Unknown command '${command}'"
+      ;;
+  esac
+done
+
+
+# Check arguments
+if [[ $# -eq 0 ]]; then
+  show_usage
+  exit 3
+fi
+if ! ((ACTION_HELP+ACTION_INIT+ACTION_START)); then
+  show_usage
+  exit 0
+fi
+
+
+# Check permissions
+if [[ $EUID -ne 0 ]]; then
+  echo >&2 "  [ERROR] This script requires privileged access to system files"
+  exit 4
+fi
+
+
+# === HELP ===
+if [[ "${ACTION_HELP}" -gt 0 ]]; then
+  show_usage
+  exit 0
+fi
+
+
+# === INIT ===
+if [[ "${ACTION_INIT}" -gt 0 ]]; then
+
+  # Check requirements
+  if [[ "x${CERTIFICATE_CN}" = "x" ]]; then
+    echo >&2 "  [ERROR] The Common Name (-c) option is mandatory."
+    exit 5
+  fi
+  if [[ "x${OVPN_SERVER_ADDR}" = "x" ]]; then
+    echo >&2 "  [ERROR] The OpenVPN public DNS name (-u) option is required."
+    exit 6
+  fi
+  if [[ "x${OVPN_SERVER_CIDR}" = "x" ]]; then
+    echo >&2 "  [ERROR] The OpenVPN subnet (-s) option is required."
+    exit 7
+  fi
+  if ! [[ "${OVPN_SERVER_CIDR}" =~ ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$ ]]; then
+    echo >&2 "  [ERROR] The OpenVPN subnet (-s) option has an invalid format."
+    exit 8
+  fi
+
+  ## --- init ---
+
+  # Copy required files to EasyRSA
+  cp -r ${__EASYRSA_DIR__}/{x509-types,openssl-1.0.cnf} ${__EASYRSA_DATA__}/
+
+  # Initialize (clean up) the CA PKI directory
+  easyrsa --vars=${EASYRSA_VARS} --batch init-pki
+
+  # Create/Build root certificate
+  echo "${CERTIFICATE_CN}" | easyrsa --vars=${EASYRSA_VARS} build-ca nopass
+
+  # Create the OpenVPN statuc key
+  openvpn --genkey --secret ${__EASYRSA_DATA__}/pki/ta.key
+
+  # Generate and sign the server key pair
+  easyrsa --vars=${EASYRSA_VARS} build-server-full server nopass
+
+  # Create an empty CRL
+  easyrsa --vars=${EASYRSA_VARS} gen-crl
+
+  # Copy required files to OpenVPN
+  cp ${__EASYRSA_DATA__}/pki/{ta.key,ca.crt,crl.pem,issued/server.crt,private/server.key} ${__OPENVPN_DATA__}/
+
+  ## --- config ---
+
+  # Generate the OpenVPN DH parameters key
+  openssl dhparam -out ${__OPENVPN_DATA__}/dh2048.pem 2048 && \
+
+  # Backup configuration files
+  if [[ -f ${OPENVPN_CONF} ]]; then
+    cp "${OPENVPN_CONF}" "${OPENVPN_CONF}.${__TS__}.bck"
+  fi
+  if [[ -f ${OPENVPN_ENV} ]]; then
+    cp "${OPENVPN_ENV}" "${OPENVPN_ENV}.${__TS__}.bck"
+  fi
+
+  # Set client routes
+  #OVPN_ROUTES=($(tr ' ' '\n' <<< "${__TMP_ROUTES__[@]} ${OVPN_SERVER_CIDR}" | sort -u | tr '\n' ' '))
+  OVPN_ROUTES=($(tr ' ' '\n' <<< "${__TMP_ROUTES__[@]}" | sort -u | tr '\n' ' '))
+
+  # Set client rules
+  OVPN_PUSH=($(tr ' ' '\n' <<< "${__TMP_PUSH__[@]// /_}" | sort -u | tr '\n' ' '))
+
+  # Set nameservers
+  if [[ ${#__TMP_NS__[@]} -gt 0 ]]; then
+    OVPN_NS=($(tr ' ' '\n' <<< "${__TMP_NS__[@]}" | sort -u | tr '\n' ' '))
+  else
+    OVPN_NS=("8.8.8.8" "8.8.4.4")
+  fi
+
+  # Set the OpenVPN server address
+  if [[ "${OVPN_SERVER_ADDR}" =~ ^((udp|tcp)://)?([0-9a-zA-Z\.\-]+)(:([0-9]+))?$  ]]; then
+    OVPN_SERVER_PROTO=${BASH_REMATCH[2]}
+    OVPN_SERVER_CN=${BASH_REMATCH[3]}
+    OVPN_SERVER_PORT=${BASH_REMATCH[5]}
+  else
+    echo >&2 "  [ERROR] Invalid OpenVPN public DNS name."
+    exit 9
+  fi
+  [[ -z "${OVPN_SERVER_PROTO}" ]] && OVPN_SERVER_PROTO="udp"
+  [[ -z "${OVPN_SERVER_PORT}" ]] && OVPN_SERVER_PORT="1194"
+  OVPN_SERVER_ADDR="${OVPN_SERVER_PROTO}://${OVPN_SERVER_CN}:${OVPN_SERVER_PORT}"
+
+  # Store the values on the env file
+  set | grep "^OVPN_" | sort > "${OPENVPN_ENV}"
+
+  # Generate the configuration file
+  cat > ${OPENVPN_CONF} <<EOF
+port ${OVPN_SERVER_PORT}
+proto ${OVPN_SERVER_PROTO}
+dev tun
+ca ca.crt
+cert server.crt
+key server.key
+dh dh2048.pem
+crl-verify crl.pem
+server $(get_route "${OVPN_SERVER_CIDR}")
+ifconfig-pool-persist ipp.txt
+keepalive 10 120
+tls-auth ta.key 0
+comp-lzo
+#user nobody
+#group nogroup
+persist-key
+persist-tun
+status openvpn.status
+verb 3
+EOF
+  [[ "${OVPN_DEFROUTE}" -gt 0 ]] && echo 'push "redirect-gateway def1 bypass-dhcp"' >> ${OPENVPN_CONF}
+  [[ "${OVPN_CLIENT_TO_CLIENT}" -gt 0 ]] && echo 'client-to-client' >> ${OPENVPN_CONF}
+  if [[ "${OVPN_DNS}" -gt 0 ]]; then
+    for dns in "${OVPN_NS[@]}"; do
+      echo "push \"dhcp-option DNS ${dns}\"" >> ${OPENVPN_CONF}
+    done
+  fi
+  for route in "${OVPN_ROUTES[@]}"; do
+    echo "route $(get_route "${route}")" >> ${OPENVPN_CONF}
+  done
+  for push in "${OVPN_PUSH[@]}"; do
+    echo "push \"${push//_/ }\"" >> ${OPENVPN_CONF}
+  done
+
+  # Clean up unneeded backups
+  diff -q "${OPENVPN_ENV}" "${OPENVPN_ENV}.${__TS__}.bck" &> /dev/null && rm -f "${OPENVPN_ENV}.${__TS__}.bck" || true
+  diff -q "${OPENVPN_CONF}" "${OPENVPN_CONF}.${__TS__}.bck" &> /dev/null && rm -f "${OPENVPN_CONF}.${__TS__}.bck" || true
+
+  # All done
+  echo "  [INFO] Configuration(s) successfully updated"
+fi
+
+
+# === START ===
+if [[ "${ACTION_START}" -gt 0 ]]; then
+
+  # Create temporary dir (if needed)
+  if ! [[ -d /tmp ]]; then
+    mkdir -p -m 1777 /tmp
+  fi
+
+  # Create required device(s)
+  if ! [[ -d /dev/net ]]; then
+    mkdir -p -m 755 /dev/net
+  fi
+  if ! [[ -c /dev/net/tun ]]; then
+    mknod /dev/net/tun c 10 200
+  fi
+
+  # Start the OpenVPN server
+  if [[ -f "${OPENVPN_CONF}" ]]; then
+    /usr/sbin/openvpn --cd ${__OPENVPN_DATA__} --status ${OPENVPN_STATUS} --config ${OPENVPN_CONF}
+  else
+    echo >&2 "  [ERROR] OpenVPN configuration not found."
+    exit 10
+  fi
+fi
+
+# All done
+exit 0
