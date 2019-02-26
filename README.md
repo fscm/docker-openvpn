@@ -8,7 +8,7 @@ This script will create a Docker image with OpenVPN installed and with all
 of the required initialisation scripts.
 
 The Docker image resulting from this script should be the one used to
-instantiate a OpenVPN server.
+instantiate an OpenVPN server.
 
 ## Getting Started
 
@@ -44,8 +44,8 @@ A build example:
 docker build --squash --force-rm --no-cache --quiet --tag johndoe/my_openvpn:latest .
 ```
 
-To clean the _<none>_ image left by the `--squash` option the following command
-can be used:
+To clean the _<none>_ image(s) left by the `--squash` option the following
+command can be used:
 
 ```
 docker rmi `docker images --filter "dangling=true" --quiet`
@@ -86,6 +86,9 @@ Two create the two required volumes the following set of commands can be used:
 docker volume create --name my_openvpn
 docker volume create --name my_easyrsa
 ```
+
+**Note:** Local folders can also be used instead of the volumes. Use the path
+of the folders in place of the volume names.
 
 #### Configuring the OpenVPN Server
 
