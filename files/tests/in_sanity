@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# Shell script to test the OpenVPN Docker image.
+#
+# Copyright 2016-2019, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This program is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+echo '=== Docker Build Test ==='
+
+printf "[TEST] Check if iptables is installed... "
+if iptables --version > /dev/null 2>&1; then
+  echo 'OK'
+else
+  echo 'Failed'
+  exit 1
+fi
+
+printf '[TEST] Check if OpenSSL is installed... '
+if openssl version > /dev/null 2>&1; then
+  echo 'OK'
+else
+  echo 'Failed'
+  exit 2
+fi
+
+printf '[TEST] Check if Root Certificates are installed... '
+if (echo | openssl s_client -connect google.com:443 2>&1) | grep -q 'Verify return code: 0 (ok)'; then
+  echo 'OK'
+else
+  echo 'Failed'
+  exit 3
+fi
+
+printf '[TEST] Check if OpenVPN is installed... '
+if openvpn --show-ciphers > /dev/null 2>&1; then
+  echo 'OK'
+else
+  echo 'Failed'
+  exit 4
+fi
+
+printf '[TEST] Check if EasyRSA is installed... '
+if easyrsa help > /dev/null 2>&1; then
+  echo 'OK'
+else
+  echo 'Failed'
+  exit 5
+fi
+
+exit 0
