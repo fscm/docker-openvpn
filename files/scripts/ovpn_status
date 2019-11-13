@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # Shell script to show the OpenVPN status.
 #
@@ -22,20 +22,20 @@ __OPENVPN_DATA__="/data/openvpn"
 OPENVPN_STATUS="${__OPENVPN_DATA__}/openvpn.status"
 
 # Usage
-function show_usage() {
+show_usage() {
   echo "Usage: ${BASENAME} [options]"
   echo "  options:"
   echo "    <none>"
 }
 
 # Check arguments
-if [[ $# -ne 0 ]]; then
+if [ $# -ne 0 ]; then
   show_usage
   exit 1
 fi
 
 # Show the status
-if [[ -f ${OPENVPN_STATUS} ]]; then
+if [ -f ${OPENVPN_STATUS} ]; then
   cat ${OPENVPN_STATUS}
 else
   echo >&2 "  [ERROR] No OpenVPN status available."

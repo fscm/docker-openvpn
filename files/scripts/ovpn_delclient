@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 #
-# Shell script to obtain the configurations for a OpenVPN client.
+# Shell script to revoke credetials for a OpenVPN user with EasyRSA.
 #
 # Copyright 2016-2019, Frederico Martins
 #   Author: Frederico Martins <http://github.com/fscm>
@@ -18,14 +18,15 @@ BASENAME=$(basename "${0}")
 # Variables
 OPENVPN_USERNAME=
 
+__EASYRSA_DIR__="/usr/local/easyrsa"
 __EASYRSA_DATA__="/data/easyrsa"
 __OPENVPN_DATA__="/data/openvpn"
 
 # Configuration files
-OPENVPN_ENV="${__OPENVPN_DATA__}/env"
+EASYRSA_VARS="${__EASYRSA_DIR__}/vars"
 
 # Usage
-function show_usage() {
+show_usage() {
   echo "Usage: ${BASENAME} [options]"
   echo "  options:"
   echo "    -u <USERNAME>  The username of the OpenVPN client."
@@ -49,55 +50,32 @@ while getopts ":u:" opt; do
 done
 
 # Check arguments
-if [[ $# -eq 0 ]]; then
+if [ $# -eq 0 ]; then
   show_usage
   exit 3
 fi
 
 # Check requirements
-if [[ "x${OPENVPN_USERNAME}" = "x" ]]; then
+if [ "x${OPENVPN_USERNAME}" = "x" ]; then
   echo >&2 "  [ERROR] The username (-u) option is mandatory."
   exit 4
 fi
 
 # Check if client credentials exist
-if [[ ! -f "${__EASYRSA_DATA__}/pki/private/${OPENVPN_USERNAME}.key" ]]; then
+if [ ! -f "${__EASYRSA_DATA__}/pki/private/${OPENVPN_USERNAME}.key" ]; then
   echo >&2 "  [ERROR] Unable to find client ${OPENVPN_USERNAME} information."
   exit 5
 fi
 
-# Import env
-if [[ -f ${OPENVPN_ENV} ]]; then
-  . ${OPENVPN_ENV}
-else
-  echo >&2 "  [ERROR] OpenVPN information is missing."
-  exit 6
-fi
+# Revoke the client certificate
+easyrsa --vars=${EASYRSA_VARS} --batch revoke "${OPENVPN_USERNAME}"
 
-# Generate the configurations
-cat <<EOF
-client
-nobind
-dev tun
-resolv-retry infinite
-remote-cert-tls server
-<key>
-$(cat "${__EASYRSA_DATA__}/pki/private/${OPENVPN_USERNAME}.key")
-</key>
-<cert>
-$(cat "${__EASYRSA_DATA__}/pki/issued/${OPENVPN_USERNAME}.crt")
-</cert>
-<ca>
-$(cat "${__EASYRSA_DATA__}/pki/ca.crt")
-</ca>
-<tls-auth>
-$(cat "${__EASYRSA_DATA__}/pki/ta.key")
-</tls-auth>
-comp-lzo
-key-direction 1
-remote ${OVPN_SERVER_CN} ${OVPN_SERVER_PORT} ${OVPN_SERVER_PROTO}
-EOF
-[[ "${OVPN_DEFROUTE}" -gt 0 ]] && echo 'redirect-gateway def1'
+# Create an updated CRL
+easyrsa --vars=${EASYRSA_VARS} gen-crl "${OPENVPN_USERNAME}"
+
+# Copy required files to OpenVPN
+cp ${__EASYRSA_DATA__}/pki/crl.pem ${__OPENVPN_DATA__}/
 
 # All done
+echo "  [INFO] Credentials successfully revoked"
 exit 0

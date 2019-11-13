@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # Shell script to create credetials for a OpenVPN user with EasyRSA.
 #
@@ -18,13 +18,13 @@ BASENAME=$(basename "${0}")
 # Variables
 OPENVPN_USERNAME=
 
-__EASYRSA_DIR__="/opt/easyrsa"
+__EASYRSA_DIR__="/usr/local/easyrsa"
 
 # Configuration files
 EASYRSA_VARS="${__EASYRSA_DIR__}/vars"
 
 # Usage
-function show_usage() {
+show_usage() {
   echo "Usage: ${BASENAME} [options]"
   echo "  options:"
   echo "    -u <USERNAME>  The username for the OpenVPN client."
@@ -48,13 +48,13 @@ while getopts ":u:" opt; do
 done
 
 # Check arguments
-if [[ $# -eq 0 ]]; then
+if [ $# -eq 0 ]; then
   show_usage
   exit 3
 fi
 
 # Check requirements
-if [[ "x${OPENVPN_USERNAME}" = "x" ]]; then
+if [ "x${OPENVPN_USERNAME}" = "x" ]; then
   echo >&2 "  [ERROR] The username (-u) option is mandatory."
   exit 4
 fi
