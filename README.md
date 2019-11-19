@@ -121,7 +121,9 @@ docker container run --volume OPENVPN_VOL:/data:rw --detach --publish 1194:1194/
 The Docker options `--cap-add=NET_ADMIN` and `--device=/dev/net/tun` are
 required for the container to be able to start.
 
-To help managing the container and the OpenVPN instance a name can be given to the container. To do this use the `--name <NAME>` docker option when starting the server   
+To help managing the container and the OpenVPN instance a name can be given to
+the container. To do this use the `--name <NAME>` docker option when starting
+the server   
 
 An example on how the OpenVPN service can be started:
 
