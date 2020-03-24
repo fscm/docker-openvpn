@@ -1,9 +1,5 @@
 # OpenVPN for Docker
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/fscm/openvpn.svg?color=black&logo=docker&logoColor=white&style=flat-square)](https://hub.docker.com/r/fscm/openvpn)
-[![Docker Stars](https://img.shields.io/docker/stars/fscm/openvpn.svg?color=black&logo=docker&logoColor=white&style=flat-square)](https://hub.docker.com/r/fscm/openvpn)
-[![Docker Build Status](https://img.shields.io/docker/cloud/build/fscm/openvpn.svg?color=black&logo=docker&logoColor=white&style=flat-square)](https://hub.docker.com/r/fscm/openvpn)
-
 A small OpenVPN image that can be used to start an OpenVPN server.
 
 ## Supported tags
