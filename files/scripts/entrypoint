@@ -36,8 +36,8 @@ OVPN_SERVER_PROTO=
 OVPN_SERVER_CIDR="172.16.61.0/24"
 
 __EASYRSA_DIR__="/usr/local/easyrsa"
-__EASYRSA_DATA__="/data/easyrsa"
-__OPENVPN_DATA__="/data/openvpn"
+__EASYRSA_DATA__="${EASYRSA_DATA_DIR:-/data/easyrsa}"
+__OPENVPN_DATA__="${OPENVPN_DATA_DIR:-/data/openvpn}"
 
 __TMP_NS__=""
 __TMP_PUSH__=""
@@ -151,7 +151,8 @@ for command in "${@}"; do
       ACTION_START=1
       ;;
     *)
-      echo >&2 "  [WARN] Unknown command '${command}'"
+      #echo >&2 "  [WARN] Unknown command '${command}'"
+      exec "$@"
       ;;
   esac
 done
@@ -226,7 +227,7 @@ if [ "${ACTION_INIT}" -gt 0 ]; then
   # Create/Build root certificate
   echo "${CERTIFICATE_CN}" | easyrsa --vars=${EASYRSA_VARS} build-ca nopass
 
-  # Create the OpenVPN statuc key
+  # Create the OpenVPN static key
   openvpn --genkey --secret ${__EASYRSA_DATA__}/pki/ta.key
 
   # Generate and sign the server key pair
@@ -274,7 +275,9 @@ if [ "${ACTION_INIT}" -gt 0 ]; then
     echo >&2 "  [ERROR] Invalid OpenVPN public DNS name."
     exit 9
   else
-    OVPN_SERVER_ADDR="${OVPN_SERVER_PROTO:-udp}://${OVPN_SERVER_CN}:${OVPN_SERVER_PORT:-1194}"
+    OVPN_SERVER_PROTO="${OVPN_SERVER_PROTO:-udp}"
+    OVPN_SERVER_PORT="${OVPN_SERVER_PORT:-1194}"
+    OVPN_SERVER_ADDR="${OVPN_SERVER_PROTO}://${OVPN_SERVER_CN}:${OVPN_SERVER_PORT}"
   fi
 
   # Store the values on the env file
@@ -285,21 +288,27 @@ if [ "${ACTION_INIT}" -gt 0 ]; then
 port ${OVPN_SERVER_PORT}
 proto ${OVPN_SERVER_PROTO}
 dev tun
+tls-server
 ca ca.crt
 cert server.crt
 key server.key
 dh dh2048.pem
 crl-verify crl.pem
+mode server
+topology subnet
 server $(get_route "${OVPN_SERVER_CIDR}")
 ifconfig-pool-persist ipp.txt
 keepalive 10 120
 tls-auth ta.key 0
-comp-lzo
+compress lz4-v2
+push "compress lz4-v2"
+fast-io
 #user nobody
 #group nogroup
 persist-key
 persist-tun
 status openvpn.status
+explicit-exit-notify 1
 verb 3
 EOF
   [ "${OVPN_DEFROUTE}" -gt 0 ] && echo 'push "redirect-gateway def1 bypass-dhcp"' >> ${OPENVPN_CONF}

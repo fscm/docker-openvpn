@@ -16,7 +16,7 @@ set -e
 BASENAME=$(basename "${0}")
 
 # Variables
-__OPENVPN_DATA__="/data/openvpn"
+__OPENVPN_DATA__="${OPENVPN_DATA_DIR:-/data/openvpn}"
 
 # Configuration files
 OPENVPN_STATUS="${__OPENVPN_DATA__}/openvpn.status"

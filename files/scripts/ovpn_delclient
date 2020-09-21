@@ -19,8 +19,8 @@ BASENAME=$(basename "${0}")
 OPENVPN_USERNAME=
 
 __EASYRSA_DIR__="/usr/local/easyrsa"
-__EASYRSA_DATA__="/data/easyrsa"
-__OPENVPN_DATA__="/data/openvpn"
+__EASYRSA_DATA__="${EASYRSA_DATA_DIR:-/data/easyrsa}"
+__OPENVPN_DATA__="${OPENVPN_DATA_DIR:-/data/openvpn}"
 
 # Configuration files
 EASYRSA_VARS="${__EASYRSA_DIR__}/vars"
@@ -63,7 +63,7 @@ fi
 
 # Check if client credentials exist
 if [ ! -f "${__EASYRSA_DATA__}/pki/private/${OPENVPN_USERNAME}.key" ]; then
-  echo >&2 "  [ERROR] Unable to find client ${OPENVPN_USERNAME} information."
+  echo >&2 "  [ERROR] Unable to find client '${OPENVPN_USERNAME}' information."
   exit 5
 fi
 

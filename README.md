@@ -5,7 +5,8 @@ A small OpenVPN image that can be used to start an OpenVPN server.
 ## Supported tags
 
 - `2.4.0`
-- `2.4.7`, `latest`
+- `2.4.7`
+- `2.4.9`, `latest`
 
 ## What is OpenVPN?
 
@@ -103,6 +104,9 @@ An example on how to configure the OpenVPN server:
 ```
 docker container run --volume my_openvpn:/data:rw --rm fscm/openvpn -c vpn.mydomain.com -n 8.8.8.8 -n 8.8.4.4 -p 'route 10.69.0.0 255.255.0.0' -s 172.16.0.0/16 -u udp://vpn.mydomain.com:1194 init
 ```
+
+**Note:** All the configuration files will be created and placed on the Docker
+volume.
 
 #### Start the OpenVPN Server
 
