@@ -92,7 +92,7 @@ docker container run --volume OPENVPN_VOL:/data:rw --rm fscm/openvpn [options] i
 * `-p RULE` - Sets a rule to be pushed to the clients.
 * `-r ROUTE` - Sets a route to be added on the client side (e.g.: '10.0.0.0/16').
 * `-s CIDR` - The OpenVPN service subnet (e.g.: '172.16.0.0/24').
-* `-u ADDRESS` - *[required]* The OpenVPN server public DNS name. Should be in the form of (udp|tcp)://<server_dns_name>:<server_port> .
+* `-u ADDRESS` - *[required]* The OpenVPN server public DNS name. Should be in the form of (udp|tcp)://server_dns_name:server_port .
 
 After this step the OpenVPN server and a new CA should be configured and ready
 to be used.
