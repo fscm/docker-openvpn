@@ -5,6 +5,7 @@ ARG __EASYRSA_DATA_DIR__="${__DATA_DIR__}/easyrsa"
 ARG __OPENVPN_DATA_DIR__="${__DATA_DIR__}/openvpn"
 
 
+
 FROM fscm/debian:buster as build
 
 ARG __BUILD_DIR__
@@ -37,6 +38,8 @@ ENV \
   LC_ALL="C.UTF-8" \
   DEBCONF_NONINTERACTIVE_SEEN="true" \
   DEBIAN_FRONTEND="noninteractive"
+
+USER "${__USER__}"
 
 COPY "LICENSE" "files/" "${__WORK_DIR__}"/
 COPY --from=busybox:uclibc "/bin/busybox" "${__WORK_DIR__}"/
@@ -113,7 +116,7 @@ RUN \
     cd ~- && \
     rm -rf "${__SOURCE_DIR__}/kernel" ; \
   } && \
-# openssl 
+# openssl
   echo '=== installing openssl ===' && \
   time { \
     install --directory "${__SOURCE_DIR__}/openssl/_build" && \
@@ -539,7 +542,7 @@ ARG __OPENVPN_DATA_DIR__
 LABEL \
   maintainer="Frederico Martins <https://hub.docker.com/u/fscm/>" \
   vendor="fscm" \
-  cmd="docker container run --interactive --rm --tty --publish 1194:1194/udp --cap-add=NET_ADMIN --device=/dev/net/tun fscm/openvpn start" \
+  cmd="docker container run --detach --publish 1194:1194/udp --cap-add=NET_ADMIN --device=/dev/net/tun fscm/openvpn start" \
   params="--volume ./:${__DATA_DIR__}:rw"
 
 EXPOSE \
